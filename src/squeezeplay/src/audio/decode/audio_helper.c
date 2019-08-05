@@ -91,6 +91,36 @@ static inline s16_t s16_clip(s16_t a, s16_t b) {
 	static SpeexResamplerState *resampler;
 #endif
 
+/*
+ * ### Baby bass drop-out ###
+ * This function is called by '_pcm_open' while the alsa pcm channel is
+ * closed during changes in the stream sample rate. It moves the
+ * overhead of setting up the effects resampler away from the main part
+ * of the audio_thread_execute loop, thereby removing one potential
+ * source of Alsa XRUN errors. Observations suggest that set up of a
+ * 48kHz stream can take 2/2.5ms, which might be enough to trigger XRUN.
+ *
+ * It replicates the actions taken by 'get_effects_samples' below, which
+ * will then skip the action as it has already been done.
+ */
+void effects_resampler_init(unsigned int output_sample_rate) {
+#ifdef RESAMPLE_EFFECTS
+       if (output_sample_rate != EFFECTS_SAMPLE_RATE) {
+                int err;
+                if (!resampler) {
+                        resampler = jive_resampler_init(1, EFFECTS_SAMPLE_RATE, output_sample_rate, EFFECTS_RESAMPLE_QUALITY, &err);
+                } else {
+                        spx_uint32_t in_rate, out_rate;
+                        jive_resampler_get_rate(resampler, &in_rate, &out_rate);
+                        if (out_rate != output_sample_rate) {
+                                jive_resampler_reset_mem(resampler);
+                                jive_resampler_set_rate(resampler, EFFECTS_SAMPLE_RATE, output_sample_rate);
+                        }
+                }
+        }
+#endif
+}
+
 static int get_effects_samples(effect_t* output_samples_buf, size_t n_samples, unsigned int output_sample_rate) {
 		size_t samples_available, samples_until_wrap;
 

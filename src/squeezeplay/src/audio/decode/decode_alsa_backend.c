@@ -570,6 +570,14 @@ static int _pcm_open(struct decode_alsa *state,
 		pcm_close(state, pcmp, mode);
 	}
 
+	/* ### Baby bass drop-out ###
+	 * Set up the effects resampler while pcm channel is closed.
+	 * Prevents set up overhead (2/2.5ms 48kHz stream) contributing
+	 * towards Alsa XRUN errors during playback.
+	 */
+	if (state->flags & FLAG_STREAM_EFFECTS) {
+		effects_resampler_init(sample_rate);
+	}
 	/* Open pcm */
 	if ((err = snd_pcm_open(pcmp, device, mode, 0)) < 0) {
 		LOG_ERROR("Playback open error: %s", snd_strerror(err));
