@@ -552,6 +552,71 @@ static int pcm_close(struct decode_alsa *state, snd_pcm_t **pcmp, int mode) {
 }
 
 
+/* ### Baby bass drop-out ###
+
+* Sets up the pcm so that it does not stop due to an xrun condition,
+* but instead fills in with a few ms of silence.
+* By 'banishing' xruns, we eliminate the possibility that
+* 'bass drop out' will occur. This has only been observed after
+* an xrun.
+
+* In its place we will get a slight audio glitch whenever an xrun
+* would have been triggered. This may or may not be more irritating
+* than the 'bass drop out' it prevents.
+
+* A period of silence seems to sound marginally better than the
+* alternative of playing out earlier audio.
+*/
+
+static int _pcm_swparams(snd_pcm_t **pcmp)
+{
+	int err;
+	snd_pcm_sw_params_t *sw_params;
+	snd_pcm_uframes_t   boundary;
+
+	sw_params = (snd_pcm_sw_params_t *) alloca(snd_pcm_sw_params_sizeof());
+	memset(sw_params, 0, snd_pcm_sw_params_sizeof());
+	/* get the current swparams */
+	err = snd_pcm_sw_params_current(*pcmp, sw_params);
+	if (err < 0) {
+		LOG_ERROR("Unable to get current swparams for playback: %s", snd_strerror(err));
+		return err;
+	}
+	/* get the boundary value for audio buffer ring pointers */
+	err = snd_pcm_sw_params_get_boundary(sw_params, &boundary);
+	if (err < 0) {
+		LOG_ERROR("Unable to get boundary value: %s", snd_strerror(err));
+		return err;
+	}
+	/* set the stop threshold to the boundary value to eliminate xruns */
+	err = snd_pcm_sw_params_set_stop_threshold(*pcmp, sw_params, boundary);
+	if (err < 0) {
+		LOG_ERROR("Unable to set stop threshold: %s", snd_strerror(err));
+		return err;
+	}
+	/* set up silence */
+	/* threshold = 0 and size = boundary clears out earlier audio */
+	err = snd_pcm_sw_params_set_silence_threshold(*pcmp, sw_params, 0);
+	if (err < 0) {
+		LOG_ERROR("Unable to set silence threshold: %s", snd_strerror(err));
+		return err;
+	}
+	err = snd_pcm_sw_params_set_silence_size(*pcmp, sw_params, boundary);
+	if (err < 0) {
+		LOG_ERROR("Unable to set silence size: %s", snd_strerror(err));
+		return err;
+	}
+	/* set software parameters */
+	err = snd_pcm_sw_params(*pcmp, sw_params);
+	if (err < 0) {
+		LOG_ERROR("Unable to set sw params: %s", snd_strerror(err));
+		return err;
+	}
+
+	return 0;
+}
+
+
 static int _pcm_open(struct decode_alsa *state,
 		     snd_pcm_t **pcmp,
 		     int mode,
@@ -662,6 +727,13 @@ static int _pcm_open(struct decode_alsa *state,
 	/* iec958 control for playback device only */
 	if (!(state->flags & FLAG_STREAM_PLAYBACK) || mode != SND_PCM_STREAM_PLAYBACK) {
 		goto skip_iec958;	  
+	}
+
+	/* ### Baby bass drop-out ### */
+	/* for playback device, we set software params too */
+	err = _pcm_swparams(pcmp);
+	if (err < 0) {
+		return err;
 	}
 
 	if ((err = snd_hctl_open(&state->hctl, state->playback_device, 0)) < 0) {
