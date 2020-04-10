@@ -1259,6 +1259,8 @@ int main(int argv, char **argc)
 #ifdef HAVE_SYSLOG
 	openlog("squeezeplay", LOG_ODELAY | LOG_CONS, LOG_USER);
 #endif
+	/* ### Baby bass drop-out ### */
+	LOG_INFO("This is a modified version of jive_alsa that mitigates against 'bass drop out'. Release version 11 April 2020.\n");
 
 	/* attach to shared memory buffer */
 	if (decode_alsa_shared_mem_attach() != 0) {
