@@ -1249,6 +1249,8 @@ int main(int argv, char **argc)
 
 	if (!state.playback_device || !state.buffer_time || !state.period_count || !state.flags) {
 		printf("Usage: %s [-v] -d <playback_device> [-c <capture_device>] -b <buffer_time> -p <period_count> -s <sample_size:24|16> -f <flags>\n", argc[0]);
+		/* ### Baby bass drop-out ### */
+		printf("Patched to mitigate against 'bass drop out'. Release 11 April 2020.\n");
 		exit(-1);
 	}
 
